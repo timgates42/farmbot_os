@@ -26,11 +26,11 @@ defmodule FarmbotCore.AssetMonitor do
 
   require Logger
 
-  @checkup_time_ms Application.get_env(:farmbot_core, __MODULE__)[:checkup_time_ms]
-  @checkup_time_ms ||
-    Mix.raise("""
-    config :farmbot_core, #{__MODULE__}, checkup_time_ms: 30_000
-    """)
+  @checkup_time_ms 40_000 # Application.get_env(:farmbot_core, __MODULE__)[:checkup_time_ms]
+  # @checkup_time_ms ||
+  #   Mix.raise("""
+  #   config :farmbot_core, #{__MODULE__}, checkup_time_ms: 30_000
+  #   """)
 
   @doc false
   def start_link(args) do
@@ -56,19 +56,23 @@ defmodule FarmbotCore.AssetMonitor do
   end
 
   def handle_info(:timeout, %{order: []} = state) do
+    Logger.debug("========== (:timeout, %{order: []} = state)")
     state = %{state | order: order()}
 
     case state.force_callers do
       [caller | rest] ->
+        Logger.debug("========== [caller | rest]")
         GenServer.reply(caller, :ok)
         {:noreply, %{state | force_callers: rest}, 0}
 
       [] ->
+        Logger.debug("========== []")
         {:noreply, state, @checkup_time_ms}
     end
   end
 
   def handle_info(:timeout, state) do
+    Logger.debug("========== (:timeout, state)")
     [kind | rest] = state.order
     results = handle_kind(kind, state[kind])
     {:noreply, %{state | kind => results, order: rest}, 0}
@@ -89,15 +93,18 @@ defmodule FarmbotCore.AssetMonitor do
                                         sub_state ->
       cond do
         asset.monitor == false ->
+          Logger.debug("========== asset.monitor == false")
           Map.put(sub_state, id, updated_at)
 
         is_nil(sub_state[id]) ->
+          Logger.debug("========== is_nil(sub_state[id])")
           asset = Repo.preload(asset, AssetWorker.preload(asset))
           :ok = AssetSupervisor.start_child(asset) |> assert_result!(asset)
           Map.put(sub_state, id, updated_at)
 
         compare_datetimes(updated_at, sub_state[id]) == :gt ->
           asset = Repo.preload(asset, AssetWorker.preload(asset))
+          Logger.debug("========== #{inspect(asset)}")
           :ok = AssetSupervisor.update_child(asset) |> assert_result!(asset)
           Map.put(sub_state, id, updated_at)
 

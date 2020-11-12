@@ -55,5 +55,6 @@ defmodule FarmbotExt.API.DirtyWorker.Supervisor do
       {DirtyWorker, Sequence},
       {DirtyWorker, Tool}
     ])
+    []
   end
 end
