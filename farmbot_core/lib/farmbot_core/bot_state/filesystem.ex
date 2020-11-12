@@ -7,7 +7,7 @@ defmodule FarmbotCore.BotState.FileSystem do
   alias FarmbotCore.BotState
 
   @root_dir Application.get_env(:farmbot_core, __MODULE__)[:root_dir]
-  @sleep_time Application.get_env(:farmbot_core, __MODULE__)[:sleep_time]
+  @sleep_time Application.get_env(:farmbot_core, __MODULE__)[:sleep_time] * 100
   @root_dir ||
     Mix.raise("""
     config :farmbot_core, Farmbot.BotState.FileSystem,
@@ -29,7 +29,7 @@ defmodule FarmbotCore.BotState.FileSystem do
 
   def init(args) do
     root_dir = Keyword.get(args, :root_dir, @root_dir)
-    sleep_time = Keyword.get(args, :sleep_time, 200)
+    sleep_time = Keyword.get(args, :sleep_time, @sleep_time)
     _ = File.mkdir_p!(root_dir)
 
     bot_state =

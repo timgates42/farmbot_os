@@ -26,11 +26,11 @@ defmodule FarmbotCore.AssetMonitor do
 
   require Logger
 
-  @checkup_time_ms Application.get_env(:farmbot_core, __MODULE__)[:checkup_time_ms]
-  @checkup_time_ms ||
-    Mix.raise("""
-    config :farmbot_core, #{__MODULE__}, checkup_time_ms: 30_000
-    """)
+  @checkup_time_ms 40_000 # Application.get_env(:farmbot_core, __MODULE__)[:checkup_time_ms]
+  # @checkup_time_ms ||
+  #   Mix.raise("""
+  #   config :farmbot_core, #{__MODULE__}, checkup_time_ms: 30_000
+  #   """)
 
   @doc false
   def start_link(args) do
