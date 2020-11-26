@@ -13,7 +13,7 @@ defmodule FarmbotExt.AMQP.LogChannel do
   alias FarmbotCore.{BotState, JSON}
   alias FarmbotExt.AMQP.Support
 
-  @checkup_ms 1000
+  @checkup_ms 150
   @exchange "amq.topic"
 
   defstruct [:conn, :chan, :jwt, :state_cache]
@@ -31,6 +31,14 @@ defmodule FarmbotExt.AMQP.LogChannel do
 
   def terminate(r, s), do: Support.handle_termination(r, s, "Log")
 
+  def handle_info({BotState, change}, state) do
+    new_state_cache = Ecto.Changeset.apply_changes(change)
+    {:noreply, %{state | state_cache: new_state_cache}, wait()}
+  end
+
+  # (inital state) Perform polling until we have a cached
+  # version of bot state handy.
+  # Cached bot state is used to attach X/Y/Z data to logs.
   def handle_info(:timeout, %{state_cache: nil} = state) do
     with {:ok, {conn, chan}} <- Support.create_channel() do
       initial_bot_state = BotState.subscribe()
@@ -49,30 +57,26 @@ defmodule FarmbotExt.AMQP.LogChannel do
     end
   end
 
+  # Perform regular polling every @checkup_ms after bot state
+  # is cached.
   def handle_info(:timeout, state) do
-    {:noreply, state, {:continue, FarmbotCore.Logger.handle_all_logs()}}
-  end
+    FarmbotCore.Logger.handle_all_logs()
+    |> Enum.map(fn log ->
+      case do_handle_log(log, state) do
+        :ok ->
+          Logger.debug("========== OK LOG :) #{log.message}")
+          {log, :ok}
 
-  def handle_info({BotState, change}, state) do
-    new_state_cache = Ecto.Changeset.apply_changes(change)
-    {:noreply, %{state | state_cache: new_state_cache}, @checkup_ms}
-  end
+        error ->
+          Logger.error("Logger amqp client failed to upload log: #{inspect(error)}")
+          # Reschedule log to be uploaded again
+          FarmbotCore.Logger.insert_log!(log)
+          Logger.debug("========== ERROR LOG :( #{log.message}")
+          {log, error}
+      end
+    end)
 
-  def handle_continue([log | rest], state) do
-    case do_handle_log(log, state) do
-      :ok ->
-        {:noreply, state, {:continue, rest}}
-
-      error ->
-        Logger.error("Logger amqp client failed to upload log: #{inspect(error)}")
-        # Reschedule log to be uploaded again
-        FarmbotCore.Logger.insert_log!(log)
-        {:noreply, state, @checkup_ms}
-    end
-  end
-
-  def handle_continue([], state) do
-    {:noreply, state, @checkup_ms}
+    {:noreply, state, wait()}
   end
 
   defp do_handle_log(log, state) do
@@ -122,5 +126,13 @@ defmodule FarmbotExt.AMQP.LogChannel do
 
   defp add_position_to_log(%{} = log, %{position: %{x: x, y: y, z: z}}) do
     Map.merge(log, %{x: x, y: y, z: z})
+  end
+
+  defp wait() do
+    if FarmbotCore.Project.env() == :test do
+      1
+    else
+      @checkup_ms
+    end
   end
 end
